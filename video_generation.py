@@ -28,6 +28,7 @@ from PIL import Image
 
 import utils
 import vision_transformer as vits
+import pickle
 
 
 FOURCC = {
@@ -223,6 +224,7 @@ class VideoGenerator:
             attentions = attentions / torch.max(attentions)
             neg_mask = attentions < 0
             attentions[neg_mask] = 0
+            self.save_attention_map(attentions, os.path.basename(img_path))
 
             attentions = (
                 nn.functional.interpolate(
@@ -242,6 +244,12 @@ class VideoGenerator:
                 cmap="inferno",
                 format="jpg",
             )
+
+    def save_attention_map(self, atten_map, image_name):
+        if not os.path.exists(f"{self.args.output_path}/dino_attention_maps"):
+            os.makedirs(f"{self.args.output_path}/dino_attention_maps")
+        with open(f"{self.args.output_path}/dino_attention_maps/{image_name.split('.')[0]}.pkl", "wb") as f:
+            pickle.dump(atten_map, f)
 
     def __load_model(self):
         # build model
