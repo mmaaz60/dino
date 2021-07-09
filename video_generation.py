@@ -90,9 +90,9 @@ class VideoGenerator:
 
                         self._inference(self.args.input_path, attention_folder)
 
-                        self._generate_video_from_images(
-                            attention_folder, self.args.output_path
-                        )
+                        # self._generate_video_from_images(
+                        #     attention_folder, self.args.output_path
+                        # )
 
                 # If input path doesn't exists
                 else:
@@ -215,24 +215,30 @@ class VideoGenerator:
             )
 
             attentions = attentions.reshape(nh, w_featmap, h_featmap)
+
+            attentions = sum(
+                attentions[i] * 1 / attentions.shape[0]
+                for i in range(attentions.shape[0])
+            )
+            attentions = attentions / torch.max(attentions)
+            neg_mask = attentions < 0
+            attentions[neg_mask] = 0
+
             attentions = (
                 nn.functional.interpolate(
-                    attentions.unsqueeze(0),
+                    attentions.unsqueeze(0).unsqueeze(0),
                     scale_factor=self.args.patch_size,
                     mode="nearest",
                 )[0]
                 .cpu()
                 .numpy()
             )
-
+            attentions = attentions.squeeze(0)
             # save attentions heatmaps
             fname = os.path.join(out, "attn-" + os.path.basename(img_path))
             plt.imsave(
                 fname=fname,
-                arr=sum(
-                    attentions[i] * 1 / attentions.shape[0]
-                    for i in range(attentions.shape[0])
-                ),
+                arr=attentions,
                 cmap="inferno",
                 format="jpg",
             )
