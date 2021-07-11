@@ -29,7 +29,8 @@ from PIL import Image
 import utils
 import vision_transformer as vits
 import pickle
-
+from gaussian_smoothing import GaussianSmoothing
+from skimage.measure import label, regionprops
 
 FOURCC = {
     "mp4": cv2.VideoWriter_fourcc(*"MP4V"),
@@ -150,6 +151,7 @@ class VideoGenerator:
 
     def _inference(self, inp: str, out: str):
         print(f"Generating attention images to {out}")
+        smoothing_layer = GaussianSmoothing(1, 5, 1)
 
         for img_path in tqdm(sorted(glob.glob(os.path.join(inp, "*.jpg")))):
             with open(img_path, "rb") as f:
@@ -211,36 +213,60 @@ class VideoGenerator:
                     scale_factor=self.args.patch_size,
                     mode="nearest",
                 )[0]
-                .cpu()
-                .numpy()
+                    .cpu()
+                    .numpy()
             )
 
             attentions = attentions.reshape(nh, w_featmap, h_featmap)
 
-            attentions = sum(
-                attentions[i] * 1 / attentions.shape[0]
-                for i in range(attentions.shape[0])
-            )
-            attentions = attentions / torch.max(attentions)
-            neg_mask = attentions < 0
-            attentions[neg_mask] = 0
-            self.save_attention_map(attentions, os.path.basename(img_path))
+            # attentions = sum(
+            #     attentions[i] * 1 / attentions.shape[0]
+            #     for i in range(attentions.shape[0])
+            # )
+            # attentions = attentions / torch.max(attentions)
+            # neg_mask = attentions < 0
+            # attentions[neg_mask] = 0
+            # attentions[attentions < torch.mean(attentions)] = 0
+            # attentions = smoothing_layer(attentions.unsqueeze(0).unsqueeze(0)).reshape(attentions.shape)
+            # self.save_attention_map(attentions, os.path.basename(img_path))
 
             attentions = (
                 nn.functional.interpolate(
-                    attentions.unsqueeze(0).unsqueeze(0),
+                    attentions.unsqueeze(0),
                     scale_factor=self.args.patch_size,
                     mode="nearest",
                 )[0]
-                .cpu()
-                .numpy()
             )
-            attentions = attentions.squeeze(0)
+            # attentions = attentions.squeeze(0)
             # save attentions heatmaps
-            fname = os.path.join(out, "attn-" + os.path.basename(img_path))
+            attention_images = []
+            for i in range(attentions.shape[0]):
+                attention = attentions[i]
+                attention = attention / torch.max(attention)
+                attention = smoothing_layer(attention.unsqueeze(0).unsqueeze(0)).reshape(attention.shape)
+                attention[attention < 0.1] = 0
+                attention[attention >= 0.1] = 1
+                attention = attention.cpu().numpy()
+                lbl = label(attention)
+                props = regionprops(lbl)
+                # boxes_image = attention.copy()
+                for prop in props:
+                    image_area = attention.shape[0] * attention.shape[1]
+                    box_area = (prop.bbox[3] - prop.bbox[1]) * (prop.bbox[2] - prop.bbox[0])
+                    if 0.01 * image_area < box_area < 0.99 * image_area:
+                        cv2.rectangle(attention, (prop.bbox[1], prop.bbox[0]), (prop.bbox[3], prop.bbox[2]),
+                                      (1, 0, 0), 2)
+                attention_images.append(attention)
+            final_image_1 = np.hstack((attention_images[0], attention_images[1], attention_images[2]))
+            final_image_2 = np.hstack((attention_images[3], attention_images[4], attention_images[5]))
+            final_image = np.vstack((final_image_1, final_image_2))
+            image_name = os.path.basename(img_path).split('.jpg')[0]
+            if not os.path.exists(f"{out}"):
+                os.makedirs(f"{out}")
+            fname = f"{out}/{image_name}.jpg"
             plt.imsave(
                 fname=fname,
-                arr=attentions,
+                arr=final_image,
                 cmap="inferno",
                 format="jpg",
             )
@@ -249,7 +275,7 @@ class VideoGenerator:
         if not os.path.exists(f"{self.args.output_path}/dino_attention_maps"):
             os.makedirs(f"{self.args.output_path}/dino_attention_maps")
         with open(f"{self.args.output_path}/dino_attention_maps/{image_name.split('.')[0]}.pkl", "wb") as f:
-            pickle.dump(atten_map, f)
+            pickle.dump(atten_map.to("cpu"), f)
 
     def __load_model(self):
         # build model
@@ -264,8 +290,8 @@ class VideoGenerator:
         if os.path.isfile(self.args.pretrained_weights):
             state_dict = torch.load(self.args.pretrained_weights, map_location="cpu")
             if (
-                self.args.checkpoint_key is not None
-                and self.args.checkpoint_key in state_dict
+                    self.args.checkpoint_key is not None
+                    and self.args.checkpoint_key in state_dict
             ):
                 print(
                     f"Take key {self.args.checkpoint_key} in provided checkpoint dict"
