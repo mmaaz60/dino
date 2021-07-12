@@ -1,13 +1,16 @@
 import os
 import cv2
 
-image_names = ['000009.jpg', '000005.jpg', '000000500716.jpg', '000000565469.jpg', '000016.jpg', '000007.jpg',
-               '000000031749.jpg', '000000429530.jpg', '000000331569.jpg', '000000334977.jpg', '000012.jpg',
-               '000000097585.jpg']
+# image_names = ['000009.jpg', '000005.jpg', '000000500716.jpg', '000000565469.jpg', '000016.jpg', '000007.jpg',
+#                '000000031749.jpg', '000000429530.jpg', '000000331569.jpg', '000000334977.jpg', '000012.jpg',
+#                '000000097585.jpg']
 
-images_dir = "/home/maaz/PycharmProjects/dino/images"
-dino_attn_bbox_dir = "/home/maaz/PycharmProjects/dino/images/attention"
-save_path = "/home/maaz/PycharmProjects/dino/images/combined"
+images_dir = "/home/maaz/PycharmProjects/dino/visualizations/test_images"
+dino_attn_bbox_dir = "/home/maaz/PycharmProjects/dino/images/dino_boxes/dino_boxes/attention"
+save_path = "/home/maaz/PycharmProjects/dino/images/dino_boxes/dino_boxes/combined"
+
+image_names = os.listdir(images_dir)
+
 if not os.path.exists(save_path):
     os.makedirs(save_path)
 

@@ -239,8 +239,10 @@ class VideoGenerator:
             )
             # attentions = attentions.squeeze(0)
             # save attentions heatmaps
-            attention_images = []
+            # attention_images = []
+            attention_boxes = {}
             for i in range(attentions.shape[0]):
+                attention_boxes[i] = []
                 attention = attentions[i]
                 attention = attention / torch.max(attention)
                 attention = smoothing_layer(attention.unsqueeze(0).unsqueeze(0)).reshape(attention.shape)
@@ -254,28 +256,40 @@ class VideoGenerator:
                     image_area = attention.shape[0] * attention.shape[1]
                     box_area = (prop.bbox[3] - prop.bbox[1]) * (prop.bbox[2] - prop.bbox[0])
                     if 0.01 * image_area < box_area < 0.99 * image_area:
-                        cv2.rectangle(attention, (prop.bbox[1], prop.bbox[0]), (prop.bbox[3], prop.bbox[2]),
-                                      (1, 0, 0), 2)
-                attention_images.append(attention)
-            final_image_1 = np.hstack((attention_images[0], attention_images[1], attention_images[2]))
-            final_image_2 = np.hstack((attention_images[3], attention_images[4], attention_images[5]))
-            final_image = np.vstack((final_image_1, final_image_2))
-            image_name = os.path.basename(img_path).split('.jpg')[0]
-            if not os.path.exists(f"{out}"):
-                os.makedirs(f"{out}")
-            fname = f"{out}/{image_name}.jpg"
-            plt.imsave(
-                fname=fname,
-                arr=final_image,
-                cmap="inferno",
-                format="jpg",
-            )
+                        h, w = attention.shape
+                        x1, y1, x2, y2 = prop.bbox[1], prop.bbox[0], prop.bbox[3], prop.bbox[2]
+                        x1, y1, x2, y2 = x1 / w, y1 / h, x2 / w, y2 / h
+                        attention_boxes[i].append((x1, y1, x2, y2))
+                        # cv2.rectangle(attention, (prop.bbox[1], prop.bbox[0]), (prop.bbox[3], prop.bbox[2]),
+                        #               (1, 0, 0), 2)
+                # attention_images.append(attention)
+            # Save the estimated dino_boxes
+            self.save_dino_boxes(attention_boxes, os.path.basename(img_path))
+            # final_image_1 = np.hstack((attention_images[0], attention_images[1], attention_images[2]))
+            # final_image_2 = np.hstack((attention_images[3], attention_images[4], attention_images[5]))
+            # final_image = np.vstack((final_image_1, final_image_2))
+            # image_name = os.path.basename(img_path).split('.jpg')[0]
+            # if not os.path.exists(f"{out}"):
+            #     os.makedirs(f"{out}")
+            # fname = f"{out}/{image_name}.jpg"
+            # plt.imsave(
+            #     fname=fname,
+            #     arr=final_image,
+            #     cmap="inferno",
+            #     format="jpg",
+            # )
 
     def save_attention_map(self, atten_map, image_name):
         if not os.path.exists(f"{self.args.output_path}/dino_attention_maps"):
             os.makedirs(f"{self.args.output_path}/dino_attention_maps")
         with open(f"{self.args.output_path}/dino_attention_maps/{image_name.split('.')[0]}.pkl", "wb") as f:
             pickle.dump(atten_map.to("cpu"), f)
+
+    def save_dino_boxes(self, boxes, image_name):
+        if not os.path.exists(f"{self.args.output_path}/dino_boxes"):
+            os.makedirs(f"{self.args.output_path}/dino_boxes")
+        with open(f"{self.args.output_path}/dino_boxes/{image_name.split('.')[0]}.pkl", "wb") as f:
+            pickle.dump(boxes, f)
 
     def __load_model(self):
         # build model
